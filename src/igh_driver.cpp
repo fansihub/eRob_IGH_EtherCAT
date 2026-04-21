@@ -2,7 +2,7 @@
 //#define _GNU_SOURCE
 
 /*****************************************************************************/
-#include <ecrt.h> 
+#include "../../ethercat_igh/output/include/ecrt.h" 
 #include <string.h>
 #include <stdio.h>
 /* For setting the process's priority (setpriority) */
