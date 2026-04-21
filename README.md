@@ -102,3 +102,4 @@ If you encounter issues, check:
 
 ## License
 This project is open source and provided for reference only. Please use with caution. The author is not responsible for any damages or losses.
+ 
