@@ -37,9 +37,9 @@
 #ifdef DC
 
 /* Slave0's clock is the reference: no drift. Algorithm from rtai_rtdm_dc example. Work in progress. */
-//#define SYNC_MASTER_TO_REF
+#define SYNC_MASTER_TO_REF
 /* Master's clock (CPU) is the reference: lower overhead. */
-#define SYNC_REF_TO_MASTER
+// #define SYNC_REF_TO_MASTER
 
 #endif
 
@@ -139,7 +139,7 @@ uint64_t system_time_ns(void)
 	clock_gettime(CLOCK_MONOTONIC, &time);
 	time_ns = TIMESPEC2NS(time);
 
-	if (system_time_base > time_nsec)
+	if (system_time_base > time_ns)
 	{
 		printf("%s() error: system_time_base greater than"
 		       " system time (system_time_base: %ld, time: %lu\n",
