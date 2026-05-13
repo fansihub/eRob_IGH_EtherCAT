@@ -2,7 +2,7 @@
 //#define _GNU_SOURCE
 
 /*****************************************************************************/
-#include "../../ethercat_igh/output/include/ecrt.h" 
+#include "../../../ethercat_igh/output/include/ecrt.h" 
 #include <string.h>
 #include <stdio.h>
 /* For setting the process's priority (setpriority) */
@@ -61,7 +61,7 @@
 /* Measure the difference in reference slave's clock timstamp each cycle, and print the result,
    which should be as close to cycleTime as possible. */
 /* Note: Only works with DC enabled. */
-#define MEASURE_PERF
+#define MEASURE_PERF 1
 
 /* Calculate the time it took to complete the loop. */
 #define MEASURE_TIMING
@@ -356,7 +356,7 @@ int main(int argc, char **argv)
 	/* Clear set, so that it contains no CPUs. */
 	CPU_ZERO(&set);
 	/* Add CPU (core) 1 to the CPU set. */
-	CPU_SET(4, &set);
+	CPU_SET(7, &set);
 	#endif
 
 	/* 0 for the first argument means set the affinity of the current process. */
@@ -634,7 +634,7 @@ int main(int argc, char **argv)
 		/* wakeupTime is also start time of the loop. */
 		/* execTime = endTime - wakeupTime */
 		timespec_sub(&execTime, &endTime, &wakeupTime);
-		printf("Execution time: %lu ns\n", execTime.tv_nsec);
+		printf("\tExecution time: %lu ns\n", execTime.tv_nsec);
 		#endif
 
 		/* wakeupTime = wakeupTime + sleepTime */
@@ -666,8 +666,8 @@ int main(int argc, char **argv)
 		actPos0 = EC_READ_S32(domain1_pd + actual_position);
 		actVel0 = EC_READ_S32(domain1_pd + actual_velocity);
 
-		printf("actPos0: %d \t\t", actPos0);
-		printf("actVel0: %d", actVel0);
+		printf("actPos0: %d\t", actPos0);
+		printf("actVel0: %d\t", actVel0);
 		/* Process the received data */
 		targetPos0 = actPos0 + 5000;
 
@@ -709,7 +709,7 @@ int main(int argc, char **argv)
 				// Keep operation enabled
 				cw = CONTROL_WORD_ENABLE_OPERATION;
 				
-				printf("Velocity: Target=10000, Actual=%d\n", actVel0);
+				printf("Velocity: Target=10000, Actual=%d", actVel0);
 				break;
 				
 			default:
@@ -757,7 +757,7 @@ int main(int argc, char **argv)
 		#endif
 
 		#ifdef MEASURE_PERF
-		printf("\nTimestamp diff: %" PRIu32 " ns\n\n", t_cur - t_prev);
+		printf("\tTimestamp diff: %" PRIu32 " ns", t_cur - t_prev);
 		t_prev = t_cur;
 		#endif
 
