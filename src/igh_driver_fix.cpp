@@ -31,7 +31,9 @@
 #define CONFIG_PDOS
 
 /* Comment to disable distributed clocks. */
+#ifndef IGH_DISABLE_DC
 #define DC
+#endif
 
 /* Choose the syncronization method: The reference clock can be either master's, or the reference slave's (slave 0 by default) */
 #ifdef DC
@@ -71,13 +73,21 @@
 #define SET_CPU_AFFINITY
 
 #define NSEC_PER_SEC (1000000000L)
+#ifndef FREQUENCY
 #define FREQUENCY 1000
+#endif
+#ifndef STARTUP_FREQUENCY
+#define STARTUP_FREQUENCY 1000
+#endif
 /* Period of motion loop, in nanoseconds */
 #define PERIOD_NS (NSEC_PER_SEC / FREQUENCY)
+#define STARTUP_PERIOD_NS (NSEC_PER_SEC / STARTUP_FREQUENCY)
 #define MODE_CSV 9
 #define TARGET_VELOCITY_CSV 10000
 #define MAX_TORQUE_PER_MILLE 1000
 #define PRINT_IGH_LATENCY_EVERY_CYCLES FREQUENCY
+#define LATENCY_WARN_50US_NS 50000
+#define LATENCY_WARN_100US_NS 100000
 
 #ifdef DC
 
@@ -436,6 +446,10 @@ int main(int argc, char **argv)
 	/* Register the signal handler function. */
 	signal(SIGINT, signal_handler);
 
+	printf("IGH cycle config: startup=%d Hz/%ld ns (%.3f us), run=%d Hz/%ld ns (%.3f us)\n",
+		STARTUP_FREQUENCY, STARTUP_PERIOD_NS, STARTUP_PERIOD_NS / 1000.0,
+		FREQUENCY, PERIOD_NS, PERIOD_NS / 1000.0);
+
 	/* Reserve the first master (0) (/etc/init.d/ethercat start) for this program */
 	master = ecrt_request_master(0);
 	if (!master)
@@ -601,8 +615,9 @@ int main(int argc, char **argv)
 	struct timespec	time;
 	#endif
 
-	struct timespec cycleTime = {0, PERIOD_NS};
+	struct timespec startupCycleTime = {0, STARTUP_PERIOD_NS};
 	clock_gettime(CLOCK_MONOTONIC, &wakeupTime);
+	uint32_t opWaitCounter = 0;
 
 	/* The slaves (drives) enter OP mode after exchanging a few frames. */
 	/* We exchange frames with no RPDOs (targetPos) untill all slaves have
@@ -611,10 +626,11 @@ int main(int argc, char **argv)
 	while (1)
 	{
 
-		timespec_add(&wakeupTime, &wakeupTime, &cycleTime);
+		timespec_add(&wakeupTime, &wakeupTime, &startupCycleTime);
 		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &wakeupTime, NULL);
 
 		ecrt_master_receive(master);
+		ecrt_domain_process(domain1);
 
 		ecrt_slave_config_state(drive0, &slaveState0);
 
@@ -623,6 +639,26 @@ int main(int argc, char **argv)
 			printf("All slaves have reached OP state\n");
 			//initDrive(master, 0);
 			break;
+		}
+
+		opWaitCounter++;
+		if (opWaitCounter >= STARTUP_FREQUENCY) {
+			ec_master_state_t masterState = {};
+			ec_domain_state_t domainState = {};
+			ecrt_master_state(master, &masterState);
+			ecrt_domain_state(domain1, &domainState);
+			printf("waiting OP: startup=%dHz/%ldns run=%dHz/%ldns master_slaves=%u master_al=0x%02x link=%u slave_al=0x%02x online=%u operational=%u domain_wc=%u domain_state=%u\n",
+				STARTUP_FREQUENCY, STARTUP_PERIOD_NS,
+				FREQUENCY, PERIOD_NS,
+				masterState.slaves_responding,
+				masterState.al_states,
+				masterState.link_up,
+				slaveState0.al_state,
+				slaveState0.online,
+				slaveState0.operational,
+				domainState.working_counter,
+				domainState.wc_state);
+			opWaitCounter = 0;
 		}
 
 		ecrt_domain_queue(domain1);
@@ -673,12 +709,13 @@ int main(int argc, char **argv)
 
 	/* Sleep is how long we should sleep each loop to keep the cycle's frequency as close to cycleTime as possible. */
 	struct timespec sleepTime;
+	struct timespec runCycleTime = {0, PERIOD_NS};
 	#ifdef MEASURE_TIMING
 	struct timespec execTime, endTime;
 	#endif
 
 	/* Wake up 1 msec after the start of the previous loop. */
-	sleepTime = cycleTime;
+	sleepTime = runCycleTime;
 	/* Update wakeupTime = current time */
 	clock_gettime(CLOCK_MONOTONIC, &wakeupTime);
 
@@ -697,9 +734,15 @@ int main(int argc, char **argv)
 	int64_t execMaxNs = INT64_MIN;
 	int64_t totalMinNs = INT64_MAX;
 	int64_t totalMaxNs = INT64_MIN;
+	uint32_t totalOver50us = 0;
+	uint32_t totalOver100us = 0;
 	struct timespec lastWakeTime = wakeupTime;
 	struct timespec wakeTime;
 	struct timespec sendDoneTime;
+
+	printf("rt_log: freq=%d Hz, target_cycle=%.1f us, stats_window=%d cycles\n",
+		FREQUENCY, PERIOD_NS / 1000.0, PRINT_IGH_LATENCY_EVERY_CYCLES);
+	printf("rt_log: jitter=actual cycle error, wake=sleep latency, run=wake-to-send, total=scheduled-to-send, all in us\n");
 
 	while (1)
 	{
@@ -834,16 +877,28 @@ int main(int argc, char **argv)
 		update_latency_range(wakeNs, &wakeMinNs, &wakeMaxNs);
 		update_latency_range(execNs, &execMinNs, &execMaxNs);
 		update_latency_range(totalNs, &totalMinNs, &totalMaxNs);
+		if (totalNs > LATENCY_WARN_50US_NS) {
+			totalOver50us++;
+		}
+		if (totalNs > LATENCY_WARN_100US_NS) {
+			totalOver100us++;
+		}
 
 		latencyLogCounter++;
 		if (latencyLogCounter >= PRINT_IGH_LATENCY_EVERY_CYCLES) {
-			printf("igh_latency period=%" PRId64 "..%" PRId64 " ns (%+.1f..%+.1f us) wake=%" PRId64 "..%" PRId64 " ns exec=%" PRId64 "..%" PRId64 " ns total=%" PRId64 "..%" PRId64 " ns\n",
-				periodMinNs, periodMaxNs,
+			printf("rt[%dHz/%.1fus] jitter=%+.1f..%+.1f us | wake=%.1f..%.1f us | run=%.1f..%.1f us | total=%.1f..%.1f us | >50us=%u >100us=%u\n",
+				FREQUENCY,
+				PERIOD_NS / 1000.0,
 				(periodMinNs - PERIOD_NS) / 1000.0,
 				(periodMaxNs - PERIOD_NS) / 1000.0,
-				wakeMinNs, wakeMaxNs,
-				execMinNs, execMaxNs,
-				totalMinNs, totalMaxNs);
+				wakeMinNs / 1000.0,
+				wakeMaxNs / 1000.0,
+				execMinNs / 1000.0,
+				execMaxNs / 1000.0,
+				totalMinNs / 1000.0,
+				totalMaxNs / 1000.0,
+				totalOver50us,
+				totalOver100us);
 
 			latencyLogCounter = 0;
 			periodMinNs = INT64_MAX;
@@ -854,6 +909,8 @@ int main(int argc, char **argv)
 			execMaxNs = INT64_MIN;
 			totalMinNs = INT64_MAX;
 			totalMaxNs = INT64_MIN;
+			totalOver50us = 0;
+			totalOver100us = 0;
 		}
 
 		#ifdef SYNC_MASTER_TO_REF

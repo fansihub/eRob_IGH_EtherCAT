@@ -173,62 +173,147 @@ actPos0: 1123016        actVel0: 10262  Velocity: Target=10000, Actual=10262    
 ### igh_driver_fix.cpp
 排查电机反复失能，AI修改了一版
 
-实测：
+#### 编译
+把 igh_driver_fix 改成 CMake 参数控制频率了。
+
+现在默认还是 1K：
 ```
-cat@lubancat:~/fansihub/igh_ws/unionai_arm/arm_hardware/eRob_IGH_EtherCAT/build$  ./igh_driver_fix 
+cd /home/cat/fansihub/igh_ws/unionai_arm/arm_hardware/eRob_IGH_EtherCAT/build
+
+cmake -DIGH_STARTUP_FREQUENCY=1000 -DIGH_FREQUENCY=1000 -DIGH_ENABLE_DC=OFF ..
+cmake --build . --target igh_driver_fix
+
+cmake -DIGH_STARTUP_FREQUENCY=1000 -DIGH_FREQUENCY=1000 -DIGH_ENABLE_DC=ON ..
+cmake --build . --target igh_driver_fix
+
+
+cmake -DIGH_STARTUP_FREQUENCY=1000 -DIGH_FREQUENCY=2000 -DIGH_ENABLE_DC=OFF ..
+cmake --build . --target igh_driver_fix
+
+cmake -DIGH_STARTUP_FREQUENCY=1000 -DIGH_FREQUENCY=2000 -DIGH_ENABLE_DC=ON ..
+cmake --build . --target igh_driver_fix
+
+
+cmake -DIGH_STARTUP_FREQUENCY=1000 -DIGH_FREQUENCY=4000 -DIGH_ENABLE_DC=OFF ..
+cmake --build . --target igh_driver_fix
+
+# 4K后开DC 就不行了
+cmake -DIGH_STARTUP_FREQUENCY=1000 -DIGH_FREQUENCY=4000 -DIGH_ENABLE_DC=ON ..
+cmake --build . --target igh_driver_fix
+
+
+cmake -DIGH_STARTUP_FREQUENCY=1000 -DIGH_FREQUENCY=8000 -DIGH_ENABLE_DC=OFF ..
+cmake --build . --target igh_driver_fix
+
+cmake -DIGH_STARTUP_FREQUENCY=1000 -DIGH_FREQUENCY=8000 -DIGH_ENABLE_DC=ON ..
+cmake --build . --target igh_driver_fix
+
+
+sudo ./igh_driver_fix
+
+```
+#### 实测
+
+2K DC ON  -> PERIOD_NS = 500000 ns -> 可以 OP
+4K DC ON  -> PERIOD_NS = 250000 ns -> 卡 PREOP
+
+
+rt[1s]
+表示这是过去 1 秒内，也就是大约 1000 个 EtherCAT 周期的统计。
+
+jitter=-1.3..+1.6 us
+表示实际周期相对 1ms 的偏差。
+比如 -1.3us 是某次周期比 1ms 短 1.3 微秒，+1.6us 是某次周期比 1ms 长 1.6 微秒。这个值越接近 0 越好。
+
+wake=0.0..1.6 us
+表示程序计划在某个时间点醒来，但实际醒来晚了多少。
+最大 1.6us 说明系统调度非常稳。
+
+run=6.4..26.3 us
+表示从程序醒来，到完成 ecrt_master_send() 的耗时。
+这里包含 EtherCAT 收包、处理 PDO、写控制字、同步 DC、发包等用户态循环逻辑。
+
+total=6.5..26.9 us
+表示从“理论应该醒来的时间点”到“EtherCAT 发包完成”的总耗时。
+它大致等于 wake + run，这是最重要的综合指标。
+
+>50us=0 >100us=0
+表示过去 1 秒内，没有任何周期的 total 超过 50us 或 100us。
+如果一直是 0，说明 1kHz 控制循环实时性很好。
+
+
+实测：
+
+##### 2K
+```
+cat@lubancat:~/fansihub/igh_ws/unionai_arm/arm_hardware/eRob_IGH_EtherCAT/build$ cmake -DIGH_STARTUP_FREQUENCY=1000 -DIGH_FREQUENCY=2000 -DIGH_ENABLE_DC=ON ..
+cmake --build . --target igh_driver_fix
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/cat/fansihub/igh_ws/unionai_arm/arm_hardware/eRob_IGH_EtherCAT/build
+Consolidate compiler generated dependencies of target igh_driver_fix
+[ 50%] Building CXX object CMakeFiles/igh_driver_fix.dir/src/igh_driver_fix.cpp.o
+[100%] Linking CXX executable igh_driver_fix
+[100%] Built target igh_driver_fix
+cat@lubancat:~/fansihub/igh_ws/unionai_arm/arm_hardware/eRob_IGH_EtherCAT/build$ sudo ./igh_driver_fix
 Using priority 99.
-sched_setscheduler failed
-: Operation not permitted
+IGH cycle config: startup=1000 Hz/1000000 ns (1000.000 us), run=2000 Hz/500000 ns (500.000 us)
 Activating master...
 Activating master...
 All slaves have reached OP state
-status=0x1288 (Fault) err=0xa000 opmode=9 cw=0x0080 actPos=1611522 actVel=-21 targetVel=10000
-status=0x1288 (Fault) err=0xa000 opmode=0 cw=0x0080 actPos=1611523 actVel=29 targetVel=10000
-status=0x12d0 (Switch on disabled) err=0x0000 opmode=9 cw=0x0006 actPos=1611524 actVel=18 targetVel=10000
-status=0x12b1 (Ready to switch on) err=0x0000 opmode=9 cw=0x0007 actPos=1611521 actVel=13 targetVel=10000
-status=0x12b3 (Switched on) err=0x0000 opmode=9 cw=0x000f actPos=1611523 actVel=0 targetVel=10000
-status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1611524 actVel=-3 targetVel=10000
-igh_latency period=994301..1052052 ns (-5.7..+52.1 us) wake=51714..58072 ns exec=6416..20125 ns total=58424..74114 ns
-status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1620697 actVel=10111 targetVel=10000
-igh_latency period=995760..1005092 ns (-4.2..+5.1 us) wake=51722..57108 ns exec=6416..16625 ns total=58425..71550 ns
-status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1630687 actVel=10198 targetVel=10000
-igh_latency period=995759..1004801 ns (-4.2..+4.8 us) wake=51719..57099 ns exec=6416..19542 ns total=58426..71780 ns
-status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1640689 actVel=9778 targetVel=10000
-igh_latency period=994884..1006259 ns (-5.1..+6.3 us) wake=51735..58300 ns exec=6416..18375 ns total=58420..76675 ns
-status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1650689 actVel=10051 targetVel=10000
-igh_latency period=994885..1005092 ns (-5.1..+5.1 us) wake=51749..57438 ns exec=6416..19251 ns total=58421..73189 ns
-status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1660696 actVel=10159 targetVel=10000
-igh_latency period=995468..1004509 ns (-4.5..+4.5 us) wake=51725..56611 ns exec=6416..16625 ns total=58436..72070 ns
-status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1670705 actVel=9751 targetVel=10000
-^C
-Releasing master...
-Killed
-cat@lubancat:~/fansihub/igh_ws/unionai_arm/arm_hardware/eRob_IGH_EtherCAT/build$ sudo ./igh_driver_fix 
+rt_log: freq=2000 Hz, target_cycle=500.0 us, stats_window=2000 cycles
+rt_log: jitter=actual cycle error, wake=sleep latency, run=wake-to-send, total=scheduled-to-send, all in us
+status=0x1288 (Fault) err=0xa000 opmode=0 cw=0x0080 actPos=609115 actVel=0 targetVel=10000
+status=0x12d0 (Switch on disabled) err=0x0000 opmode=9 cw=0x0006 actPos=609111 actVel=0 targetVel=10000
+status=0x12b1 (Ready to switch on) err=0x0000 opmode=9 cw=0x0007 actPos=609113 actVel=-24 targetVel=10000
+status=0x12b3 (Switched on) err=0x0000 opmode=9 cw=0x000f actPos=609114 actVel=15 targetVel=10000
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=609115 actVel=-1 targetVel=10000
+rt[2000Hz/500.0us] jitter=-0.7..+0.8 us | wake=0.0..1.0 us | run=6.4..19.2 us | total=6.4..19.3 us | >50us=0 >100us=0
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=618262 actVel=9997 targetVel=10000
+rt[2000Hz/500.0us] jitter=-1.0..+1.1 us | wake=0.0..1.2 us | run=6.1..19.5 us | total=6.2..19.7 us | >50us=0 >100us=0
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=628265 actVel=9978 targetVel=10000
+rt[2000Hz/500.0us] jitter=-1.2..+1.1 us | wake=0.0..1.2 us | run=6.1..20.7 us | total=6.4..20.8 us | >50us=0 >100us=0
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=638269 actVel=9819 targetVel=10000
+rt[2000Hz/500.0us] jitter=-1.0..+0.8 us | wake=0.0..1.1 us | run=6.1..29.5 us | total=6.4..29.6 us | >50us=0 >100us=0
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=648275 actVel=10083 targetVel=10000
+rt[2000Hz/500.0us] jitter=-0.7..+1.1 us | wake=0.0..1.2 us | run=6.4..19.2 us | total=6.4..19.4 us | >50us=0 >100us=0
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=658278 actVel=10033 targetVel=10000
+rt[2000Hz/500.0us] jitter=-1.2..+1.1 us | wake=0.0..1.3 us | run=6.1..29.2 us | total=6.4..29.3 us | >50us=0 >100us=0
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=668279 actVel=9741 targetVel=10000
+```
+##### 4K
+```
+cat@lubancat:~/fansihub/igh_ws/unionai_arm/arm_hardware/eRob_IGH_EtherCAT/build$ cmake -DIGH_STARTUP_FREQUENCY=1000 -DIGH_FREQUENCY=4000 -DIGH_ENABLE_DC=ON ..
+cmake --build . --target igh_driver_fix
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/cat/fansihub/igh_ws/unionai_arm/arm_hardware/eRob_IGH_EtherCAT/build
+Consolidate compiler generated dependencies of target igh_driver_fix
+[ 50%] Building CXX object CMakeFiles/igh_driver_fix.dir/src/igh_driver_fix.cpp.o
+[100%] Linking CXX executable igh_driver_fix
+[100%] Built target igh_driver_fix
+cat@lubancat:~/fansihub/igh_ws/unionai_arm/arm_hardware/eRob_IGH_EtherCAT/build$ sudo ./igh_driver_fix
 Using priority 99.
+IGH cycle config: startup=1000 Hz/1000000 ns (1000.000 us), run=4000 Hz/250000 ns (250.000 us)
 Activating master...
 Activating master...
-All slaves have reached OP state
-status=0x1288 (Fault) err=0xa000 opmode=9 cw=0x0080 actPos=1674629 actVel=0 targetVel=10000
-status=0x1288 (Fault) err=0xa000 opmode=0 cw=0x0080 actPos=1674630 actVel=5 targetVel=10000
-status=0x12d0 (Switch on disabled) err=0x0000 opmode=9 cw=0x0006 actPos=1674630 actVel=-1 targetVel=10000
-status=0x12b1 (Ready to switch on) err=0x0000 opmode=9 cw=0x0007 actPos=1674629 actVel=-16 targetVel=10000
-status=0x12b3 (Switched on) err=0x0000 opmode=9 cw=0x000f actPos=1674630 actVel=-36 targetVel=10000
-status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1674629 actVel=-17 targetVel=10000
-igh_latency period=998676..1001593 ns (-1.3..+1.6 us) wake=0..1593 ns exec=6416..26250 ns total=6452..26899 ns
-status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1683802 actVel=10015 targetVel=10000
-igh_latency period=998385..1001592 ns (-1.6..+1.6 us) wake=0..1736 ns exec=6416..17792 ns total=6421..17923 ns
-status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1693804 actVel=9920 targetVel=10000
-igh_latency period=998968..1001009 ns (-1.0..+1.0 us) wake=0..1148 ns exec=6416..30334 ns total=6418..30956 ns
-status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1703798 actVel=9856 targetVel=10000
-igh_latency period=999260..1001009 ns (-0.7..+1.0 us) wake=0..1101 ns exec=6416..17791 ns total=6461..18271 ns
-status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1713795 actVel=10162 targetVel=10000
-igh_latency period=999259..1000718 ns (-0.7..+0.7 us) wake=0..927 ns exec=6416..21292 ns total=6434..21923 ns
-status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1723802 actVel=9949 targetVel=10000
-igh_latency period=998676..1001301 ns (-1.3..+1.3 us) wake=0..1422 ns exec=6416..17209 ns total=6432..17223 ns
-status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1733806 actVel=9863 targetVel=10000
+waiting OP: startup=1000Hz/1000000ns run=4000Hz/250000ns master_slaves=1 master_al=0x02 link=1 slave_al=0x02 online=1 operational=0 domain_wc=0 domain_state=0
+waiting OP: startup=1000Hz/1000000ns run=4000Hz/250000ns master_slaves=1 master_al=0x02 link=1 slave_al=0x02 online=1 operational=0 domain_wc=0 domain_state=0
+waiting OP: startup=1000Hz/1000000ns run=4000Hz/250000ns master_slaves=1 master_al=0x02 link=1 slave_al=0x02 online=1 operational=0 domain_wc=0 domain_state=0
 ^C
 Releasing master...
 Killed
+cat@lubancat:~/fansihub/igh_ws/unionai_arm/arm_hardware/eRob_IGH_EtherCAT/build$ sudo ./igh_driver_fix
+Using priority 99.
+IGH cycle config: startup=1000 Hz/1000000 ns (1000.000 us), run=4000 Hz/250000 ns (250.000 us)
+Activating master...
+Activating master...
+waiting OP: startup=1000Hz/1000000ns run=4000Hz/250000ns master_slaves=1 master_al=0x02 link=1 slave_al=0x02 online=1 operational=0 domain_wc=0 domain_state=0
+waiting OP: startup=1000Hz/1000000ns run=4000Hz/250000ns master_slaves=1 master_al=0x02 link=1 slave_al=0x02 online=1 operational=0 domain_wc=0 domain_state=0
+^C
+Releasing master...
+Killed
+cat@lubancat:~/fansihub/igh_ws/unionai_arm/arm_hardware/eRob_IGH_EtherCAT/build$ 
 ```
 
 ### Program Features
