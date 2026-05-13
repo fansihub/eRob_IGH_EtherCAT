@@ -27,6 +27,16 @@ target_include_directories(
 )
 target_link_libraries(igh_driver ${ETHERCAT_LIB})
 
+add_executable(
+  igh_driver_fix
+  src/igh_driver_fix.cpp)
+
+target_include_directories(
+  igh_driver_fix
+  PRIVATE
+  ${ETHERLAB_DIR}/include
+)
+target_link_libraries(igh_driver_fix ${ETHERCAT_LIB})
 
 
 

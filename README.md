@@ -170,7 +170,66 @@ actPos0: 1123008        actVel0: 10240  Velocity: Target=10000, Actual=10240    
 actPos0: 1123016        actVel0: 10262  Velocity: Target=10000, Actual=10262    Timestamp diff: 1001526 ns      Execution time: 18681 ns
 
 ```
+### igh_driver_fix.cpp
+排查电机反复失能，AI修改了一版
 
+实测：
+```
+cat@lubancat:~/fansihub/igh_ws/unionai_arm/arm_hardware/eRob_IGH_EtherCAT/build$  ./igh_driver_fix 
+Using priority 99.
+sched_setscheduler failed
+: Operation not permitted
+Activating master...
+Activating master...
+All slaves have reached OP state
+status=0x1288 (Fault) err=0xa000 opmode=9 cw=0x0080 actPos=1611522 actVel=-21 targetVel=10000
+status=0x1288 (Fault) err=0xa000 opmode=0 cw=0x0080 actPos=1611523 actVel=29 targetVel=10000
+status=0x12d0 (Switch on disabled) err=0x0000 opmode=9 cw=0x0006 actPos=1611524 actVel=18 targetVel=10000
+status=0x12b1 (Ready to switch on) err=0x0000 opmode=9 cw=0x0007 actPos=1611521 actVel=13 targetVel=10000
+status=0x12b3 (Switched on) err=0x0000 opmode=9 cw=0x000f actPos=1611523 actVel=0 targetVel=10000
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1611524 actVel=-3 targetVel=10000
+igh_latency period=994301..1052052 ns (-5.7..+52.1 us) wake=51714..58072 ns exec=6416..20125 ns total=58424..74114 ns
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1620697 actVel=10111 targetVel=10000
+igh_latency period=995760..1005092 ns (-4.2..+5.1 us) wake=51722..57108 ns exec=6416..16625 ns total=58425..71550 ns
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1630687 actVel=10198 targetVel=10000
+igh_latency period=995759..1004801 ns (-4.2..+4.8 us) wake=51719..57099 ns exec=6416..19542 ns total=58426..71780 ns
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1640689 actVel=9778 targetVel=10000
+igh_latency period=994884..1006259 ns (-5.1..+6.3 us) wake=51735..58300 ns exec=6416..18375 ns total=58420..76675 ns
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1650689 actVel=10051 targetVel=10000
+igh_latency period=994885..1005092 ns (-5.1..+5.1 us) wake=51749..57438 ns exec=6416..19251 ns total=58421..73189 ns
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1660696 actVel=10159 targetVel=10000
+igh_latency period=995468..1004509 ns (-4.5..+4.5 us) wake=51725..56611 ns exec=6416..16625 ns total=58436..72070 ns
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1670705 actVel=9751 targetVel=10000
+^C
+Releasing master...
+Killed
+cat@lubancat:~/fansihub/igh_ws/unionai_arm/arm_hardware/eRob_IGH_EtherCAT/build$ sudo ./igh_driver_fix 
+Using priority 99.
+Activating master...
+Activating master...
+All slaves have reached OP state
+status=0x1288 (Fault) err=0xa000 opmode=9 cw=0x0080 actPos=1674629 actVel=0 targetVel=10000
+status=0x1288 (Fault) err=0xa000 opmode=0 cw=0x0080 actPos=1674630 actVel=5 targetVel=10000
+status=0x12d0 (Switch on disabled) err=0x0000 opmode=9 cw=0x0006 actPos=1674630 actVel=-1 targetVel=10000
+status=0x12b1 (Ready to switch on) err=0x0000 opmode=9 cw=0x0007 actPos=1674629 actVel=-16 targetVel=10000
+status=0x12b3 (Switched on) err=0x0000 opmode=9 cw=0x000f actPos=1674630 actVel=-36 targetVel=10000
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1674629 actVel=-17 targetVel=10000
+igh_latency period=998676..1001593 ns (-1.3..+1.6 us) wake=0..1593 ns exec=6416..26250 ns total=6452..26899 ns
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1683802 actVel=10015 targetVel=10000
+igh_latency period=998385..1001592 ns (-1.6..+1.6 us) wake=0..1736 ns exec=6416..17792 ns total=6421..17923 ns
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1693804 actVel=9920 targetVel=10000
+igh_latency period=998968..1001009 ns (-1.0..+1.0 us) wake=0..1148 ns exec=6416..30334 ns total=6418..30956 ns
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1703798 actVel=9856 targetVel=10000
+igh_latency period=999260..1001009 ns (-0.7..+1.0 us) wake=0..1101 ns exec=6416..17791 ns total=6461..18271 ns
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1713795 actVel=10162 targetVel=10000
+igh_latency period=999259..1000718 ns (-0.7..+0.7 us) wake=0..927 ns exec=6416..21292 ns total=6434..21923 ns
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1723802 actVel=9949 targetVel=10000
+igh_latency period=998676..1001301 ns (-1.3..+1.3 us) wake=0..1422 ns exec=6416..17209 ns total=6432..17223 ns
+status=0x16b7 (Operation enabled) err=0x0000 opmode=9 cw=0x000f actPos=1733806 actVel=9863 targetVel=10000
+^C
+Releasing master...
+Killed
+```
 
 ### Program Features
 - Automatic state machine transition for slave devices (from INIT to OPERATION ENABLED)
